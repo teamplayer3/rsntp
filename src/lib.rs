@@ -1,5 +1,10 @@
 #![cfg_attr(
-    all(feature = "async", feature = "chrono", feature = "time"),
+    all(
+        feature = "async",
+        any(feature = "tokio", feature = "smol"),
+        feature = "chrono",
+        feature = "time"
+    ),
     doc = r##"
 # rsntp
 
@@ -157,7 +162,9 @@ use packet::Packet;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
-#[cfg(feature = "async")]
+#[cfg(all(feature = "async", feature = "smol"))]
+use smol_timeout::TimeoutExt;
+#[cfg(all(feature = "async", feature = "tokio"))]
 use tokio::time::timeout;
 
 const SNTP_PORT: u16 = 123;
@@ -446,7 +453,10 @@ impl AsyncSntpClient {
     ) -> Result<SynchronizationResult, SynchroniztationError> {
         let mut receive_buffer = [0; Packet::ENCODED_LEN];
 
+        #[cfg(feature = "tokio")]
         let socket = tokio::net::UdpSocket::bind(self.config.bind_address).await?;
+        #[cfg(feature = "smol")]
+        let socket = smol::net::UdpSocket::bind(self.config.bind_address).await?;
         socket
             .connect(server_address.to_server_addrs(SNTP_PORT))
             .await?;
@@ -454,7 +464,12 @@ impl AsyncSntpClient {
 
         socket.send(&request.as_bytes()).await?;
 
+        #[cfg(feature = "tokio")]
         let result_future = timeout(self.config.timeout, socket.recv_from(&mut receive_buffer));
+        #[cfg(feature = "smol")]
+        let result_future = socket
+            .recv_from(&mut receive_buffer)
+            .timeout(self.config.timeout);
 
         let (bytes_received, server_address) = result_future.await.map_err(|_| {
             std::io::Error::new(

@@ -12,13 +12,18 @@ readme = "README.md"
 description = "An RFC 5905 compliant Simple Network Time Protocol (SNTP) client library for Rust"
 
 [features]
-default = ["async", "chrono"]
-async = ["tokio"]
+default = ["async", "smol", "chrono"]
+async = []
+tokio = ["dep:tokio"]
+smol = ["dep:smol", "smol-timeout"]
 
 [dependencies]
 chrono = { version = "^0.4.10", optional = true }
 time = { version = "^0.3.7", optional = true }
 tokio = { version = "^1.0", features = ["net", "time"], optional = true }
+
+smol = {version = "1.2", optional = true }
+smol-timeout = {version = "0.6.0", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
