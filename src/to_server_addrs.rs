@@ -30,9 +30,12 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV
 ///
 /// ```
 pub trait ToServerAddrs {
-    #[cfg(feature = "async")]
+    #[cfg(all(feature = "async", feature = "tokio"))]
     #[doc(hidden)]
     type Return: std::net::ToSocketAddrs + tokio::net::ToSocketAddrs;
+    #[cfg(all(feature = "async", feature = "smol"))]
+    #[doc(hidden)]
+    type Return: std::net::ToSocketAddrs + smol::net::AsyncToSocketAddrs;
     #[cfg(not(feature = "async"))]
     #[doc(hidden)]
     type Return: std::net::ToSocketAddrs;

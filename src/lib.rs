@@ -471,7 +471,7 @@ impl AsyncSntpClient {
             .recv_from(&mut receive_buffer)
             .timeout(self.config.timeout);
 
-        let (bytes_received, server_address) = result_future.await.map_err(|_| {
+        let (bytes_received, server_address) = result_future.await.ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
                 "Timeout while waiting for server reply",
