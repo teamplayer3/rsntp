@@ -18,7 +18,7 @@ tokio = ["dep:tokio"]
 smol = ["dep:smol", "smol-timeout"]
 
 [dependencies]
-chrono = { version = "^0.4.10", optional = true }
+chrono = { version = "^0.4.10", optional = true, default-featurs = false, features = ["clock", "std", "wasmbind"]}
 time = { version = "^0.3.7", optional = true }
 tokio = { version = "^1.0", features = ["net", "time"], optional = true }
 
