@@ -40,8 +40,7 @@ impl SntpDuration {
     /// println!("Clock offset: {} seconds", clock_offset);
     /// ```
     pub fn abs_as_std_duration(&self) -> Result<std::time::Duration, ConversionError> {
-        // TODO: make this fallible when std::time::Duration::try_from_secs_f64 is stabilized
-        Ok(std::time::Duration::from_secs_f64(self.0.abs()))
+        std::time::Duration::try_from_secs_f64(self.0.abs()).map_err(|_| ConversionError::Overflow)
     }
 
     /// Returns with the sign of the duration
@@ -176,6 +175,14 @@ impl SntpDateTime {
             .map_err(|_| ConversionError::Overflow)
     }
 
+    /// Convert instance to [`std::time::SystemTime`].
+    ///
+    /// Convenience wrapper for [`TryInto<std::time::SystemTime>::try_into`]
+    /// to avoid type annotations.
+    pub fn into_system_time(self) -> Result<std::time::SystemTime, ConversionError> {
+        self.try_into()
+    }
+
     /// Convert instance to [`chrono::DateTime<chrono::Utc>`].
     ///
     /// Convenience wrapper for [`TryInto<chrono::DateTime<chrono::Utc>>::try_into`]
@@ -192,6 +199,22 @@ impl SntpDateTime {
     #[cfg(feature = "time")]
     pub fn into_offset_date_time(self) -> Result<time::OffsetDateTime, ConversionError> {
         self.try_into()
+    }
+}
+
+impl TryInto<std::time::SystemTime> for SntpDateTime {
+    type Error = ConversionError;
+
+    fn try_into(self) -> Result<std::time::SystemTime, ConversionError> {
+        if self.offset.signum() > 0 {
+            SystemTime::now()
+                .checked_add(self.offset.abs_as_std_duration()?)
+                .ok_or(ConversionError::Overflow)
+        } else {
+            SystemTime::now()
+                .checked_sub(self.offset.abs_as_std_duration()?)
+                .ok_or(ConversionError::Overflow)
+        }
     }
 }
 
@@ -413,6 +436,13 @@ mod tests {
         assert_eq!(negative_duration.signum(), -1);
     }
 
+    #[test]
+    fn sntp_duration_abs_fails_on_overflow() {
+        let duration = SntpDuration::from_secs_f64(2e19);
+
+        assert!(duration.abs_as_std_duration().is_err());
+    }
+
     #[cfg(feature = "chrono")]
     #[test]
     fn sntp_duration_converting_to_chrono_duration_works() {
@@ -426,16 +456,14 @@ mod tests {
         assert_eq!(negative_chrono, chrono::Duration::hours(-1));
     }
 
-    // TODO: converting to chono::Duration does not really fails but runs into
-    // a panic in the time crate. Seems like a bug.
-    //    #[cfg(feature = "chrono")]
-    //    #[test]
-    //    fn sntp_duration_converting_to_chrono_duration_fails() {
-    //        let nan_duration_result: Result<chrono::Duration, ConversionError> =
-    //           SntpDuration::from_secs_f64(f64::NAN).try_into();
-    //
-    //        assert!(nan_duration_result.is_err());
-    //    }
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn sntp_duration_converting_to_chrono_duration_fails() {
+        let nan_duration_result: Result<chrono::Duration, ConversionError> =
+            SntpDuration::from_secs_f64(f64::NAN).try_into();
+
+        assert!(nan_duration_result.is_err());
+    }
 
     #[cfg(feature = "time")]
     #[test]
@@ -450,6 +478,28 @@ mod tests {
         assert_eq!(negative_time, time::Duration::hours(-1));
     }
 
+    #[test]
+    fn sntp_date_time_converting_to_system_time_works() {
+        let now = std::time::SystemTime::now();
+        let datetime = SntpDateTime::new(SntpDuration::from_secs_f64(3600.0));
+
+        let systemtime_1 = datetime.into_system_time().unwrap();
+        let systemtime_2 = now
+            .checked_add(std::time::Duration::from_secs_f64(3600.0))
+            .unwrap();
+
+        assert_eq!(
+            systemtime_1
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            systemtime_2
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        );
+    }
+
     #[cfg(feature = "chrono")]
     #[test]
     fn sntp_date_time_converting_to_chrono_datetime_works() {
@@ -461,15 +511,14 @@ mod tests {
         assert!(diff.num_milliseconds() < 110);
     }
 
-    // TODO: converting to chono::Duration does not really fails but runs into
-    //    #[cfg(feature = "chrono")]
-    //    #[test]
-    //    fn sntp_date_time_converting_to_chrono_datetime_fails_for_nan() {
-    //        let datetime = SntpDateTime::new(SntpDuration::from_secs_f64(f64::NAN));
-    //        let converted: Result<chrono::DateTime<chrono::Utc>, ConversionError> = datetime.try_into();
-    //
-    //        assert!(converted.is_err());
-    //    }
+    #[cfg(feature = "chrono")]
+    #[test]
+    fn sntp_date_time_converting_to_chrono_datetime_fails_for_nan() {
+        let datetime = SntpDateTime::new(SntpDuration::from_secs_f64(f64::NAN));
+        let converted: Result<chrono::DateTime<chrono::Utc>, ConversionError> = datetime.try_into();
+
+        assert!(converted.is_err());
+    }
 
     #[cfg(feature = "time")]
     #[test]

@@ -5,9 +5,9 @@ use std::fmt::{Display, Formatter};
 
 /// Kiss code, reason of a Kiss-o'-Death reply.
 ///
-/// Kiss code provides an information about why the SNTP server sent a Kiss-o'-Death packet, i.e.
-/// why the request is rejected. This enum is generally a 1-to-1 mapping to SNTP RFC kiss codes,
-/// see RFC 5905 section 7.4.
+/// Kiss code provides information about why the SNTP server sent a Kiss-o'-Death packet, i.e.
+/// why the request has been rejected. This enum is generally a 1-to-1 mapping to SNTP RFC kiss
+/// codes, see RFC 5905 section 7.4.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum KissCode {
     /// Unknown code
@@ -102,10 +102,10 @@ impl Display for KissCode {
     }
 }
 
-/// A detailed information about SNTP protocol related errors.
+/// Detailed information about SNTP protocol related errors.
 ///
-/// This is a more detailed description of the error and can be used by clients which needs a more
-/// elaborate information about the reason of the failure.
+/// This is a more detailed description of the error and can be used by clients who need more
+/// elaborate information about the reason for the failure.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ProtocolError {
     /// Server reply packet is too short
@@ -164,44 +164,70 @@ impl Display for ProtocolError {
 ///
 /// Returned when synchronization fails.
 #[derive(Debug)]
-pub enum SynchroniztationError {
+pub enum SynchronizationError {
     /// An I/O error occured during the query, like socket error, timeout, etc...
     IOError(std::io::Error),
     /// SNTP protocol specific error
     ProtocolError(ProtocolError),
 }
 
-impl Error for SynchroniztationError {
+impl Error for SynchronizationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            SynchroniztationError::IOError(io_error) => Some(io_error),
-            SynchroniztationError::ProtocolError(protocol_error) => Some(protocol_error),
+            SynchronizationError::IOError(io_error) => Some(io_error),
+            SynchronizationError::ProtocolError(protocol_error) => Some(protocol_error),
         }
     }
 }
 
-impl Display for SynchroniztationError {
+impl Display for SynchronizationError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            SynchroniztationError::IOError(io_error) => {
+            SynchronizationError::IOError(io_error) => {
                 write!(f, "Input/output error: {}", io_error)
             }
-            SynchroniztationError::ProtocolError(protocol_error) => {
+            SynchronizationError::ProtocolError(protocol_error) => {
                 write!(f, "Protocol error: {}", protocol_error)
             }
         }
     }
 }
 
-impl From<std::io::Error> for SynchroniztationError {
-    fn from(io_error: std::io::Error) -> SynchroniztationError {
-        SynchroniztationError::IOError(io_error)
+impl From<std::io::Error> for SynchronizationError {
+    fn from(io_error: std::io::Error) -> SynchronizationError {
+        SynchronizationError::IOError(io_error)
     }
 }
 
-impl From<ProtocolError> for SynchroniztationError {
-    fn from(protocol_error: ProtocolError) -> SynchroniztationError {
-        SynchroniztationError::ProtocolError(protocol_error)
+impl From<ProtocolError> for SynchronizationError {
+    fn from(protocol_error: ProtocolError) -> SynchronizationError {
+        SynchronizationError::ProtocolError(protocol_error)
+    }
+}
+
+impl SynchronizationError {
+    /// Check if the error is a Kiss-o'-Death.
+
+    /// KoD is a special error case as it indicates that client should stop sending request
+    /// to the server. This helper function checks directly for that error condition.
+    ///
+    /// ```no_run
+    /// use rsntp::SntpClient;
+    ///
+    /// let client = SntpClient::new();
+    /// let result = client.synchronize("pool.ntp.org");
+    ///
+    /// if let Err(err) = result {
+    ///     if err.is_kiss_of_death() {
+    ///         println!("Kiss-o'-Death")
+    ///     }
+    /// }
+    /// ```
+    pub fn is_kiss_of_death(&self) -> bool {
+        matches!(
+            self,
+            SynchronizationError::ProtocolError(ProtocolError::KissODeath(_))
+        )
     }
 }
 
